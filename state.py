@@ -5,7 +5,7 @@ class TravelState(TypedDict):
     destination: str
     days: int
     budget: int
-    likes : list
+    likes : list[str]
     flight: str
     hotel: str
     itinerary: str
