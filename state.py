@@ -9,3 +9,4 @@ class TravelState(TypedDict):
     flight: str
     hotel: str
     itinerary: str
+    next_node:str

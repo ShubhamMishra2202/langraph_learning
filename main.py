@@ -7,7 +7,8 @@ initial_state = {
     "likes":["anime","food"],
     "flight": "",
     "hotel": "",
-    "itinerary": ""
+    "itinerary": "",
+    "next_node":"flight"
 }
-result = graph.invoke(initial_state)
+# result = graph.invoke(initial_state)
 graph.invoke(initial_state)
