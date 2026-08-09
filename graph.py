@@ -1,7 +1,7 @@
 from langgraph.graph import StateGraph, START, END
 
 from state import TravelState
-from nodes import planner, flight, hotel, itinerary
+from nodes import planner, flight, hotel, itinerary,ask_user
 
 
 graph_builder = StateGraph(TravelState)
@@ -11,6 +11,7 @@ graph_builder.add_node("planner", planner)
 graph_builder.add_node("flight", flight)
 graph_builder.add_node("hotel", hotel)
 graph_builder.add_node("itinerary", itinerary)
+graph_builder.add_node("ask_user", ask_user)
 
 
 # Start → Planner
@@ -29,6 +30,7 @@ graph_builder.add_conditional_edges(
         "flight": "flight",
         "hotel": "hotel",
         "itinerary": "itinerary",
+         "ask_user":"ask_user",
         "end": END
     }
 )
@@ -38,6 +40,7 @@ graph_builder.add_conditional_edges(
 graph_builder.add_edge("flight", "planner")
 graph_builder.add_edge("hotel", "planner")
 graph_builder.add_edge("itinerary", "planner")
+graph_builder.add_edge("ask_user", "planner")
 
 
 graph = graph_builder.compile()

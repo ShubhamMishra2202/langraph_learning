@@ -1,14 +1,15 @@
 from graph import graph
 initial_state = {
-    "source":"Ahmedabad",
-    "destination": "Japan",
-    "days": 5,
-    "budget": 150000,
-    "likes":["anime","food"],
+    "user_query":"I want to visit japan",
+    "source":None,
+    "destination": None,
+    "days": None,
+    "budget": None,
+    "likes":[],
     "flight": "",
     "hotel": "",
     "itinerary": "",
-    "next_node":"flight"
+    "next_node":None
 }
 # result = graph.invoke(initial_state)
 graph.invoke(initial_state)

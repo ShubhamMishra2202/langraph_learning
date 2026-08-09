@@ -1,9 +1,47 @@
+from langchain_openai import ChatOpenAI
+from dotenv import load_dotenv
 from state import TravelState
+load_dotenv()
+llm = ChatOpenAI(model="gpt-4o-mini")
 def planner(state: TravelState):
     print("Planner Node Executed")
 
-    return {}
+    prompt = f"""
+    You are a travel planner.
 
+    User Query:
+    {state["user_query"]}
+
+    Current information:
+    Source: {state["source"]}
+    Destination: {state["destination"]}
+    Days: {state["days"]}
+    Budget: {state["budget"]}
+    Likes: {state["likes"]}
+
+    Decide what should happen next.
+
+    If required information is missing, return:
+    ask_user
+
+    Otherwise choose exactly one:
+    flight
+    hotel
+    itinerary
+    end
+
+    Return ONLY one of these words.
+    """
+
+    response = llm.invoke(prompt)
+
+    decision = response.content.strip().lower()
+
+    print("LLM Decision:", decision)
+
+    return {
+        "next_node": decision
+    }
 def flight(state:TravelState):
     print("Flight Node Executed")
 
@@ -83,4 +121,19 @@ Day 5 : Return Journey
     print(state)
     return {
         "itinerary": itinerary_data
+    }
+
+
+
+def ask_user(state: TravelState):
+    print("\n========== Ask User Node ==========")
+
+    missing_fields = state["missing_fields"]
+
+    print(f"I need the following information: {missing_fields}")
+
+    user_input = input(f"Please provide {missing_fields[0]}: ")
+
+    return {
+        missing_fields[0]: user_input
     }
