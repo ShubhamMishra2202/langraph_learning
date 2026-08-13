@@ -1,3 +1,5 @@
+import logging
+
 from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
 from state import TravelState
@@ -6,9 +8,19 @@ from model import PlannerDecision
 load_dotenv()
 llm = ChatOpenAI(model="gpt-4o-mini")
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[
+        logging.FileHandler("app.log"),
+        logging.StreamHandler(),
+    ],
+)
+logger = logging.getLogger(__name__)
+
 def planner(state: TravelState):
-    print("Planner Node Executed")
-    print("State:", state)
+    logger.info("Planner Node Executed")
+    logger.info("State: %s", state)
 
     # Python is the source of truth for required fields
     required_fields = [
@@ -63,93 +75,77 @@ def planner(state: TravelState):
         "next_node": response.next_node,
         "missing_fields": []
     }
-def flight(state:TravelState):
-    print("Flight Node Executed")
-    print("State:", state)
+def flight(state: TravelState):
+    logger.info("Flight Node Executed")
+    logger.info("State: %s", state)
 
-    source = state["source"]
-    destination = state["destination"]
-    budget = state["budget"]
+    prompt = f"""
+    You are a flight recommendation assistant.
 
-    print(f"Source      : {source}")
-    print(f"Destination : {destination}")
-    print(f"Budget      : {budget}")
+    Find suitable flight options based on:
 
-    flight_data = f"""
-Option 1
----------
-Air India
-{source} → {destination}
-₹48,000
+    Source: {state["source"]}
+    Destination: {state["destination"]}
+    Budget: {state["budget"]}
 
-Option 2
----------
-ANA
-{source} → {destination}
-₹52,000
-"""
+    Provide 2 realistic-looking flight options.
+    Include airline, route and approximate price.
+    """
+
+    response = llm.invoke(prompt)
 
     return {
-        "flight": flight_data
+        "flight": response.content
     }
 
 def hotel(state: TravelState):
-    print("\n========== Hotel Node ==========")
-    print("State:", state)
+    logger.info("Hotel Node Executed")
+    logger.info("State: %s", state)
 
-    destination = state["destination"]
-    budget = state["budget"]
-    days = state["days"]
+    prompt = f"""
+    You are a hotel recommendation assistant.
 
-    print(f"Destination : {destination}")
-    print(f"Days        : {days}")
-    print(f"Budget      : ₹{budget}")
+    Recommend suitable hotels based on:
 
-    hotel_data = f"""
-Option 1
----------
-Tokyo Grand Hotel
-5 Nights
-₹35,000
+    Destination: {state["destination"]}
+    Days: {state["days"]}
+    Budget: {state["budget"]}
+    Likes: {state["likes"]}
 
-Option 2
----------
-Shinjuku Inn
-5 Nights
-₹28,000
-"""
+    Provide 2 suitable hotel options.
+    Include hotel name, approximate price and a short description.
+    """
+
+    response = llm.invoke(prompt)
 
     return {
-        "hotel": hotel_data
+        "hotel": response.content
     }
-
 def itinerary(state: TravelState):
-    print("\n========== Itinerary Node ==========")
-    print("State:", state)
+    logger.info("Itinerary Node Executed")
+    logger.info("State: %s", state)
 
-    destination = state["destination"]
-    days = state["days"]
-    likes = state["likes"]
+    prompt = f"""
+    You are a travel itinerary assistant.
 
-    print(f"Destination : {destination}")
-    print(f"Days        : {days}")
-    print(f"Interests   : {likes}")
+    Create a {state["days"]}-day itinerary.
 
-    itinerary_data = f"""
-Day 1 : Arrival in {destination}
-Day 2 : City Tour
-Day 3 : Local Food Exploration
-Day 4 : Shopping & Cultural Visit
-Day 5 : Return Journey
-"""
+    Destination: {state["destination"]}
+    Interests: {state["likes"]}
+
+    Create a simple day-by-day itinerary.
+    """
+
+    response = llm.invoke(prompt)
+
     return {
-        "itinerary": itinerary_data
+        "itinerary": response.content
     }
 
 
 def ask_user(state: TravelState):
-    print("\n========== Ask User Node ==========")
-    print("State:", state)
+    logger.info("========== Ask User Node ==========")
+    logger.info("State: %s", state)
 
     missing_fields = state["missing_fields"]
     field = missing_fields[0]
