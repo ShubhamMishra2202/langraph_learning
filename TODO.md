@@ -1,0 +1,1 @@
+- The problem is that `ask_user` keeps the same `missing_fields` list, so the Planner repeatedly asks for **Source** instead of moving to the next missing field.

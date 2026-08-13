@@ -1,18 +1,44 @@
 from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
 from state import TravelState
+from model import PlannerDecision
+
 load_dotenv()
 llm = ChatOpenAI(model="gpt-4o-mini")
+
 def planner(state: TravelState):
     print("Planner Node Executed")
+    print("State:", state)
 
+    # Python is the source of truth for required fields
+    required_fields = [
+        "source",
+        "destination",
+        "days",
+        "budget",
+        "likes"
+    ]
+
+    missing_fields = [
+        field for field in required_fields
+        if not state[field]
+    ]
+
+    # If information is missing, don't ask the LLM
+    if missing_fields:
+        return {
+            "next_node": "ask_user",
+            "missing_fields": missing_fields
+        }
+
+    # Only use the LLM when we have all required information
     prompt = f"""
     You are a travel planner.
 
     User Query:
     {state["user_query"]}
 
-    Current information:
+    Available information:
     Source: {state["source"]}
     Destination: {state["destination"]}
     Days: {state["days"]}
@@ -21,29 +47,25 @@ def planner(state: TravelState):
 
     Decide what should happen next.
 
-    If required information is missing, return:
-    ask_user
+    Choose exactly one:
+    - flight
+    - hotel
+    - itinerary
+    - end
 
-    Otherwise choose exactly one:
-    flight
-    hotel
-    itinerary
-    end
-
-    Return ONLY one of these words.
+    Return the decision and nothing else.
     """
 
-    response = llm.invoke(prompt)
-
-    decision = response.content.strip().lower()
-
-    print("LLM Decision:", decision)
+    structured_llm = llm.with_structured_output(PlannerDecision)
+    response = structured_llm.invoke(prompt)
 
     return {
-        "next_node": decision
+        "next_node": response.next_node,
+        "missing_fields": []
     }
 def flight(state:TravelState):
     print("Flight Node Executed")
+    print("State:", state)
 
     source = state["source"]
     destination = state["destination"]
@@ -73,6 +95,7 @@ ANA
 
 def hotel(state: TravelState):
     print("\n========== Hotel Node ==========")
+    print("State:", state)
 
     destination = state["destination"]
     budget = state["budget"]
@@ -102,6 +125,7 @@ Shinjuku Inn
 
 def itinerary(state: TravelState):
     print("\n========== Itinerary Node ==========")
+    print("State:", state)
 
     destination = state["destination"]
     days = state["days"]
@@ -118,22 +142,30 @@ Day 3 : Local Food Exploration
 Day 4 : Shopping & Cultural Visit
 Day 5 : Return Journey
 """
-    print(state)
     return {
         "itinerary": itinerary_data
     }
 
 
-
 def ask_user(state: TravelState):
     print("\n========== Ask User Node ==========")
+    print("State:", state)
 
     missing_fields = state["missing_fields"]
+    field = missing_fields[0]
 
-    print(f"I need the following information: {missing_fields}")
+    user_input = input(f"Please provide {field}: ")
 
-    user_input = input(f"Please provide {missing_fields[0]}: ")
+    if field == "days":
+        user_input = int(user_input)
+
+    elif field == "budget":
+        user_input = int(user_input)
+
+    elif field == "likes":
+        user_input = [item.strip() for item in user_input.split(",")]
 
     return {
-        missing_fields[0]: user_input
+        field.lower(): user_input,
+        "missing_fields": missing_fields[1:]
     }
