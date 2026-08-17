@@ -22,7 +22,7 @@ def planner(state: TravelState):
     logger.info("Planner Node Executed")
     logger.info("State: %s", state)
 
-    # Python is the source of truth for required fields
+    # Python remains the source of truth for required user information
     required_fields = [
         "source",
         "destination",
@@ -36,43 +36,155 @@ def planner(state: TravelState):
         if not state[field]
     ]
 
-    # If information is missing, don't ask the LLM
+    # ---------------------------------------------------------
+    # 1. Required information is missing → ask the user
+    # ---------------------------------------------------------
     if missing_fields:
+        logger.info("Missing fields: %s", missing_fields)
+
         return {
             "next_node": "ask_user",
             "missing_fields": missing_fields
         }
 
-    # Only use the LLM when we have all required information
+    # ---------------------------------------------------------
+    # 2. All required information is available
+    #    Let the LLM decide the next workflow step
+    # ---------------------------------------------------------
+
+    flight_done = bool(state.get("flight"))
+    hotel_done = bool(state.get("hotel"))
+    itinerary_done = bool(state.get("itinerary"))
+
     prompt = f"""
-    You are a travel planner.
+You are the routing agent for a travel-planning workflow.
 
-    User Query:
-    {state["user_query"]}
+Your job is to decide the SINGLE best NEXT NODE to execute.
 
-    Available information:
-    Source: {state["source"]}
-    Destination: {state["destination"]}
-    Days: {state["days"]}
-    Budget: {state["budget"]}
-    Likes: {state["likes"]}
+Do NOT generate a travel plan.
+Do NOT explain your decision.
+Return only the selected node.
 
-    Decide what should happen next.
+USER REQUEST:
+{state["user_query"]}
 
-    Choose exactly one:
-    - flight
-    - hotel
-    - itinerary
-    - end
+TRAVEL INFORMATION:
+- Source: {state["source"]}
+- Destination: {state["destination"]}
+- Days: {state["days"]}
+- Budget: {state["budget"]}
+- Likes: {state["likes"]}
 
-    Return the decision and nothing else.
-    """
+CURRENT WORKFLOW STATUS:
+- Flight completed: {flight_done}
+- Hotel completed: {hotel_done}
+- Itinerary completed: {itinerary_done}
+
+AVAILABLE NODES:
+- flight
+- hotel
+- itinerary
+- end
+
+WORKFLOW RULES:
+
+1. Flight should normally be completed before hotel.
+2. Hotel should normally be completed before itinerary.
+3. Itinerary should normally be generated after flight and hotel.
+4. Never select a node that has already completed successfully.
+5. If flight is not completed, prefer "flight".
+6. If flight is completed but hotel is not completed, prefer "hotel".
+7. If flight and hotel are completed but itinerary is not completed, choose "itinerary".
+8. If flight, hotel, and itinerary are all completed, choose "end".
+9. Never choose "end" if any required workflow step is incomplete.
+10. Never repeatedly select the same completed node.
+11. You may only return one of:
+    flight
+    hotel
+    itinerary
+    end
+
+CURRENT STATE:
+- flight = {state.get("flight")}
+- hotel = {state.get("hotel")}
+- itinerary = {state.get("itinerary")}
+
+Return ONLY the node name.
+"""
 
     structured_llm = llm.with_structured_output(PlannerDecision)
+
     response = structured_llm.invoke(prompt)
 
+    next_node = response.next_node
+
+    logger.info("LLM selected next node: %s", next_node)
+
+    # ---------------------------------------------------------
+    # 3. Safety validation
+    #    Prevent the LLM from breaking the workflow
+    # ---------------------------------------------------------
+
+    if next_node == "flight" and flight_done:
+        logger.warning(
+            "LLM selected completed flight node. Overriding decision."
+        )
+
+        if not hotel_done:
+            next_node = "hotel"
+        elif not itinerary_done:
+            next_node = "itinerary"
+        else:
+            next_node = "end"
+
+    elif next_node == "hotel" and hotel_done:
+        logger.warning(
+            "LLM selected completed hotel node. Overriding decision."
+        )
+
+        if not itinerary_done:
+            next_node = "itinerary"
+        else:
+            next_node = "end"
+
+    elif next_node == "itinerary" and itinerary_done:
+        logger.warning(
+            "LLM selected completed itinerary node. Overriding decision."
+        )
+
+        next_node = "end"
+
+    # ---------------------------------------------------------
+    # 4. Prevent skipping required workflow steps
+    # ---------------------------------------------------------
+
+    if not flight_done and next_node in ["hotel", "itinerary", "end"]:
+        logger.warning(
+            "LLM attempted to skip flight. Overriding to flight."
+        )
+        next_node = "flight"
+
+    elif flight_done and not hotel_done and next_node in ["itinerary", "end"]:
+        logger.warning(
+            "LLM attempted to skip hotel. Overriding to hotel."
+        )
+        next_node = "hotel"
+
+    elif (
+        flight_done
+        and hotel_done
+        and not itinerary_done
+        and next_node == "end"
+    ):
+        logger.warning(
+            "LLM attempted to end before itinerary. Overriding to itinerary."
+        )
+        next_node = "itinerary"
+
+    logger.info("Final planner decision: %s", next_node)
+
     return {
-        "next_node": response.next_node,
+        "next_node": next_node,
         "missing_fields": []
     }
 def flight(state: TravelState):

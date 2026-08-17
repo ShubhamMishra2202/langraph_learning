@@ -30,7 +30,7 @@ graph_builder.add_conditional_edges(
         "flight": "flight",
         "hotel": "hotel",
         "itinerary": "itinerary",
-         "ask_user":"ask_user",
+        "ask_user":"ask_user",
         "end": END
     }
 )
