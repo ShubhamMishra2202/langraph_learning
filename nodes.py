@@ -1,9 +1,11 @@
 import logging
 
 from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage, ToolMessage
 from dotenv import load_dotenv
 from state import TravelState
 from model import PlannerDecision
+from tools import search_flights
 
 load_dotenv()
 llm = ChatOpenAI(model="gpt-4o-mini")
@@ -190,7 +192,7 @@ Return ONLY the node name.
 def flight(state: TravelState):
     logger.info("Flight Node Executed")
     logger.info("State: %s", state)
-
+    flight_llm = llm.bind_tools([search_flights])
     prompt = f"""
     You are a flight recommendation assistant.
 
@@ -204,7 +206,20 @@ def flight(state: TravelState):
     Include airline, route and approximate price.
     """
 
-    response = llm.invoke(prompt)
+    messages = [HumanMessage(content=prompt)]
+    response = flight_llm.invoke(messages)
+    messages.append(response)
+
+    # Performs every tool call the llm model requested 
+    for tool_call in response.tool_calls:
+        tool_result = search_flights.invoke(tool_call["args"])
+        messages.append(ToolMessage(content=tool_result, tool_call_id=tool_call["id"]))
+
+    # Sends back the tools responses so that the LLM model can generate the final answer 
+    if response.tool_calls:
+        response = flight_llm.invoke(messages)
+
+    logger.info(f"Flight Mode response  {response}")
 
     return {
         "flight": response.content

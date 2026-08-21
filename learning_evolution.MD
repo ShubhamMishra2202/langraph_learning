@@ -30,3 +30,10 @@ A running log of issues hit while building this LangGraph travel-planner project
 **Issue:** With the old prompt, the LLM almost always jumped straight to `itinerary` (or looped on it) because it had no explicit signal that `flight` and `hotel` needed to run first — nothing in the prompt enforced ordering.
 
 **Fix:** The new planner prompt states the required order explicitly (flight → hotel → itinerary) and includes the current completion status for each. A second Python-side check (independent of the LLM call) forces the decision back to `flight` or `hotel` if the LLM tries to skip ahead to `itinerary`/`end` while an earlier step is still incomplete — so ordering is now enforced deterministically rather than left to the model.
+
+## 2026-08-21
+
+### 6. `flight` node always returned an empty response
+**Issue:** `flight()` called `llm.bind_tools([search_flights])` and read `response.content` directly. When a model is bound with tools and decides to use one, it returns `content=""` and puts the request in `response.tool_calls` instead — the tool is never actually executed by LangChain automatically. Since the code never checked `tool_calls`, ran `search_flights`, or fed the result back to the model, the LLM's real output was discarded and `flight` in state stayed empty.
+
+**Fix:** Implemented the full tool-calling loop in `flight()`: send the prompt as a `HumanMessage`, check `response.tool_calls`, actually invoke `search_flights.invoke(tool_call["args"])` for each requested call, append each result as a `ToolMessage` (tagged with `tool_call_id`), then call the LLM again with the extended message history so it can produce the final answer using the tool output. Only then is `response.content` read.
