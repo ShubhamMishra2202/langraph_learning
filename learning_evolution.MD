@@ -37,3 +37,10 @@ A running log of issues hit while building this LangGraph travel-planner project
 **Issue:** `flight()` called `llm.bind_tools([search_flights])` and read `response.content` directly. When a model is bound with tools and decides to use one, it returns `content=""` and puts the request in `response.tool_calls` instead — the tool is never actually executed by LangChain automatically. Since the code never checked `tool_calls`, ran `search_flights`, or fed the result back to the model, the LLM's real output was discarded and `flight` in state stayed empty.
 
 **Fix:** Implemented the full tool-calling loop in `flight()`: send the prompt as a `HumanMessage`, check `response.tool_calls`, actually invoke `search_flights.invoke(tool_call["args"])` for each requested call, append each result as a `ToolMessage` (tagged with `tool_call_id`), then call the LLM again with the extended message history so it can produce the final answer using the tool output. Only then is `response.content` read.
+
+## 2026-10-31
+
+### 7. Flight tool loop only handled a single round of tool calls
+**Issue:** The fix in #6 ran the requested tool calls once and invoked the LLM one more time. If that second response asked for *more* tools (e.g. a retry with different args), those calls were never executed and `response.content` was empty again. The loop was also hidden inside the `flight` node, so it didn't show up in the graph.
+
+**Fix:** Moved the loop into the graph itself, the idiomatic LangGraph way. `TravelState` now has a `messages: Annotated[list[AnyMessage], add_messages]` channel, a prebuilt `ToolNode([search_flights])` is registered as `flight_tools`, and `tools_condition` routes `flight → flight_tools → flight` for as long as the last AI message has `tool_calls`, then `flight → planner`. The `flight` node seeds the conversation on its first pass and only writes `state["flight"]` once the LLM answers without tool calls. Runaway loops are bounded by LangGraph's `recursion_limit` (default 25).

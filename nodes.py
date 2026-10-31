@@ -210,7 +210,8 @@ def flight(state: TravelState):
     response = flight_llm.invoke(messages)
     messages.append(response)
 
-    # Performs every tool call the llm model requested 
+    # Performs every tool call the llm model requested
+    
     for tool_call in response.tool_calls:
         tool_result = search_flights.invoke(tool_call["args"])
         messages.append(ToolMessage(content=tool_result, tool_call_id=tool_call["id"]))

@@ -1,7 +1,9 @@
 from langgraph.graph import StateGraph, START, END
+from langgraph.prebuilt import ToolNode, tools_condition
 
 from state import TravelState
 from nodes import planner, flight, hotel, itinerary,ask_user
+from tools import search_flights
 
 
 graph_builder = StateGraph(TravelState)
@@ -9,6 +11,7 @@ graph_builder = StateGraph(TravelState)
 
 graph_builder.add_node("planner", planner)
 graph_builder.add_node("flight", flight)
+graph_builder.add_node("flight_tools", ToolNode([search_flights]))
 graph_builder.add_node("hotel", hotel)
 graph_builder.add_node("itinerary", itinerary)
 graph_builder.add_node("ask_user", ask_user)
@@ -36,8 +39,19 @@ graph_builder.add_conditional_edges(
 )
 
 
+# Flight tool loop: flight -> flight_tools -> flight until the LLM stops requesting tools
+graph_builder.add_conditional_edges(
+    "flight",
+    tools_condition,
+    {
+        "tools": "flight_tools",
+        END: "planner"
+    }
+)
+graph_builder.add_edge("flight_tools", "flight")
+
+
 # After each worker, return to Planner
-graph_builder.add_edge("flight", "planner")
 graph_builder.add_edge("hotel", "planner")
 graph_builder.add_edge("itinerary", "planner")
 graph_builder.add_edge("ask_user", "planner")

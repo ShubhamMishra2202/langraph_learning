@@ -9,7 +9,8 @@ initial_state = {
     "flight": "",
     "hotel": "",
     "itinerary": "",
-    "next_node":None
+    "next_node":None,
+    "messages": []
 }
 # result = graph.invoke(initial_state)
 graph.invoke(initial_state)
