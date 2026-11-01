@@ -1,6 +1,6 @@
 # Learning Evolution
 
-A running log of issues hit while building this LangGraph travel-planner project, and how they were resolved.
+A running log of issues hit while building this LangGraph travel-planner project, and how they were resolved. Concept milestones reached are tracked in [MILESTONES.md](MILESTONES.md).
 
 ## 2026-08-13
 
@@ -44,3 +44,5 @@ A running log of issues hit while building this LangGraph travel-planner project
 **Issue:** The fix in #6 ran the requested tool calls once and invoked the LLM one more time. If that second response asked for *more* tools (e.g. a retry with different args), those calls were never executed and `response.content` was empty again. The loop was also hidden inside the `flight` node, so it didn't show up in the graph.
 
 **Fix:** Moved the loop into the graph itself, the idiomatic LangGraph way. `TravelState` now has a `messages: Annotated[list[AnyMessage], add_messages]` channel, a prebuilt `ToolNode([search_flights])` is registered as `flight_tools`, and `tools_condition` routes `flight → flight_tools → flight` for as long as the last AI message has `tool_calls`, then `flight → planner`. The `flight` node seeds the conversation on its first pass and only writes `state["flight"]` once the LLM answers without tool calls. Runaway loops are bounded by LangGraph's `recursion_limit` (default 25).
+
+**Milestone (8 in [MILESTONES.md](MILESTONES.md)):** This makes the flight step a proper **ReAct loop** (Reason → Act → Observe → repeat): `flight` reasons and decides on a tool call, `flight_tools` acts, the `ToolMessage` is the observation fed into the next `flight` pass, and `tools_condition` decides whether to loop or finish. The rest of the graph is still a planner-driven workflow; only `flight` is ReAct so far, and with a single stubbed tool it usually completes in one round.
