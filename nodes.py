@@ -6,7 +6,7 @@ from langchain_core.messages import HumanMessage
 from dotenv import load_dotenv
 from state import TravelState
 from model import PlannerDecision
-from tools import search_flights
+from tools import FLIGHT_TOOLS
 from tracing import setup_logging, log_block, log_llm_response
 
 load_dotenv()
@@ -196,28 +196,33 @@ def flight(state: TravelState):
         f"Trip: {state['source']} → {state['destination']}, {state['days']} days, budget {state['budget']}",
         f"Messages so far: {len(state['messages'])}",
     )
-    flight_llm = llm.bind_tools([search_flights])
+    flight_llm = llm.bind_tools(FLIGHT_TOOLS)
 
     # First pass seeds the conversation; later passes continue it with the ToolMessages from flight_tools
     new_messages = []
     if not state["messages"]:
         prompt = f"""
-    You are a flight recommendation assistant.
+    You are a flight recommendation assistant with these tools:
+    - lookup_airport_code: find IATA codes for a city name
+    - search_flights: search real flight offers (needs IATA codes)
+    - convert_currency: convert prices into another currency
 
-    Use the search_flights tool to find real flight offers based on:
+    Find real flight offers for this trip:
 
     Source: {state["source"]}
     Destination: {state["destination"]}
     Days: {state["days"]}
-    Budget: {state["budget"]}
+    Budget: {state["budget"]} INR
     Today's date: {date.today().isoformat()}
 
-    Convert the source and destination to IATA airport or city codes before calling the tool.
+    Decide for yourself which tools you need and in what order.
+    search_flights needs IATA codes; look them up if you are not sure of them.
     The user has not chosen travel dates, so do not pass departure_date; the tool picks a default.
-    If the search fails, fix the arguments and try again.
+    If a tool fails, fix the arguments and try again.
 
-    From the results, recommend the 2 best options for the budget.
-    Include airline, route, dates and price with currency.
+    Before recommending, make sure prices are compared against the budget in the same currency.
+    Recommend the 2 best options for the budget.
+    Include airline, route, dates and price in both the offer currency and INR.
     """
         new_messages.append(HumanMessage(content=prompt))
 

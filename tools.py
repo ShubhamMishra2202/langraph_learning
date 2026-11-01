@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 DUFFEL_API_URL = "https://api.duffel.com"
 DUFFEL_VERSION = "v2"
+FRANKFURTER_API_URL = "https://api.frankfurter.dev/v1"
 
 
 def _duffel_headers() -> dict:
@@ -118,3 +119,85 @@ def search_flights(
     return "Flight search results (cheapest first):\n" + "\n".join(
         _format_offer(offer) for offer in cheapest
     )
+
+
+@tool
+def lookup_airport_code(city: str, max_results: int = 5) -> str:
+    """Find IATA airport and city codes for a place name using the Duffel API.
+
+    Use this when the user gave a city or airport name rather than an IATA code,
+    or when you are not sure which code is correct. Skip it if you already know the code.
+
+    Args:
+        city: City or airport name to look up, e.g. "Ahmedabad" or "Tokyo".
+        max_results: How many matching places to return.
+    """
+
+    log_block(logger, "TOOL CALL", f"lookup_airport_code → Duffel GET /places/suggestions?query={city}")
+
+    response = requests.get(
+        f"{DUFFEL_API_URL}/places/suggestions",
+        params={"query": city},
+        headers=_duffel_headers(),
+        timeout=30,
+    )
+
+    if not response.ok:
+        log_block(logger, "TOOL RESULT", f"lookup_airport_code → failed (HTTP {response.status_code})")
+        return f"Airport lookup failed (HTTP {response.status_code}): {response.text}"
+
+    places = response.json()["data"][:max_results]
+    log_block(logger, "TOOL RESULT", f"lookup_airport_code → {len(places)} places (HTTP {response.status_code})")
+
+    if not places:
+        return f"No airports found for '{city}'. Try a nearby larger city."
+
+    lines = []
+    for place in places:
+        line = f"- {place['iata_code']} ({place['type']}): {place['name']}, {place['iata_country_code']}"
+        # A city code covers several airports; list them so the LLM can pick one
+        airports = [airport["iata_code"] for airport in place.get("airports") or []]
+        if airports:
+            line += f" | airports: {', '.join(airports)}"
+        lines.append(line)
+
+    return f"Places matching '{city}':\n" + "\n".join(lines)
+
+
+@tool
+def convert_currency(amount: float, from_currency: str, to_currency: str) -> str:
+    """Convert an amount between currencies using the latest ECB exchange rates (Frankfurter API).
+
+    Use this to compare prices in one currency against a budget in another,
+    e.g. flight offers in USD against a budget in INR.
+
+    Args:
+        amount: The amount to convert.
+        from_currency: ISO 4217 code of the amount's currency, e.g. "USD".
+        to_currency: ISO 4217 code to convert into, e.g. "INR".
+    """
+
+    from_currency, to_currency = from_currency.upper(), to_currency.upper()
+    if from_currency == to_currency:
+        return f"{amount} {from_currency} = {amount} {to_currency}"
+
+    log_block(logger, "TOOL CALL", f"convert_currency → Frankfurter {amount} {from_currency} → {to_currency}")
+
+    response = requests.get(
+        f"{FRANKFURTER_API_URL}/latest",
+        params={"amount": amount, "from": from_currency, "to": to_currency},
+        timeout=15,
+    )
+
+    if not response.ok:
+        log_block(logger, "TOOL RESULT", f"convert_currency → failed (HTTP {response.status_code})")
+        return f"Currency conversion failed (HTTP {response.status_code}): {response.text}"
+
+    data = response.json()
+    converted = data["rates"][to_currency]
+    log_block(logger, "TOOL RESULT", f"convert_currency → {converted} {to_currency} (rate date {data['date']})")
+
+    return f"{amount} {from_currency} = {converted} {to_currency} (rate date {data['date']})"
+
+
+FLIGHT_TOOLS = [lookup_airport_code, search_flights, convert_currency]
