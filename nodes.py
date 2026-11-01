@@ -7,23 +7,20 @@ from dotenv import load_dotenv
 from state import TravelState
 from model import PlannerDecision
 from tools import search_flights
+from tracing import setup_logging, log_block, log_llm_response
 
 load_dotenv()
 llm = ChatOpenAI(model="gpt-4o-mini")
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        logging.FileHandler("app.log"),
-        logging.StreamHandler(),
-    ],
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 def planner(state: TravelState):
-    logger.info("Planner Node Executed")
-    logger.info("State: %s", state)
+    log_block(
+        logger, "NODE",
+        "Node: planner",
+        f"Done: flight={bool(state.get('flight'))} hotel={bool(state.get('hotel'))} itinerary={bool(state.get('itinerary'))}",
+    )
 
     # Python remains the source of truth for required user information
     required_fields = [
@@ -43,7 +40,7 @@ def planner(state: TravelState):
     # 1. Required information is missing → ask the user
     # ---------------------------------------------------------
     if missing_fields:
-        logger.info("Missing fields: %s", missing_fields)
+        log_block(logger, "DECISION", f"Missing fields: {missing_fields}", "→ NEXT: ask_user")
 
         return {
             "next_node": "ask_user",
@@ -120,8 +117,9 @@ Return ONLY the node name.
     response = structured_llm.invoke(prompt)
 
     next_node = response.next_node
+    llm_choice = next_node
 
-    logger.info("LLM selected next node: %s", next_node)
+    log_block(logger, "LLM", f"→ PLANNER CHOICE: {llm_choice}")
 
     # ---------------------------------------------------------
     # 3. Safety validation
@@ -184,15 +182,20 @@ Return ONLY the node name.
         )
         next_node = "itinerary"
 
-    logger.info("Final planner decision: %s", next_node)
+    overridden = f" (guardrail overrode LLM choice '{llm_choice}')" if next_node != llm_choice else ""
+    log_block(logger, "DECISION", f"→ NEXT: {next_node}{overridden}")
 
     return {
         "next_node": next_node,
         "missing_fields": []
     }
 def flight(state: TravelState):
-    logger.info("Flight Node Executed")
-    logger.info("State: %s", state)
+    log_block(
+        logger, "NODE",
+        "Node: flight",
+        f"Trip: {state['source']} → {state['destination']}, {state['days']} days, budget {state['budget']}",
+        f"Messages so far: {len(state['messages'])}",
+    )
     flight_llm = llm.bind_tools([search_flights])
 
     # First pass seeds the conversation; later passes continue it with the ToolMessages from flight_tools
@@ -221,7 +224,7 @@ def flight(state: TravelState):
     response = flight_llm.invoke(state["messages"] + new_messages)
     new_messages.append(response)
 
-    logger.info(f"Flight Mode response  {response}")
+    log_llm_response(logger, response)
 
     update = {"messages": new_messages}
 
@@ -232,8 +235,11 @@ def flight(state: TravelState):
     return update
 
 def hotel(state: TravelState):
-    logger.info("Hotel Node Executed")
-    logger.info("State: %s", state)
+    log_block(
+        logger, "NODE",
+        "Node: hotel",
+        f"Trip: {state['destination']}, {state['days']} days, budget {state['budget']}, likes {state['likes']}",
+    )
 
     prompt = f"""
     You are a hotel recommendation assistant.
@@ -250,13 +256,17 @@ def hotel(state: TravelState):
     """
 
     response = llm.invoke(prompt)
+    log_llm_response(logger, response)
 
     return {
         "hotel": response.content
     }
 def itinerary(state: TravelState):
-    logger.info("Itinerary Node Executed")
-    logger.info("State: %s", state)
+    log_block(
+        logger, "NODE",
+        "Node: itinerary",
+        f"Trip: {state['days']} days in {state['destination']}, interests {state['likes']}",
+    )
 
     prompt = f"""
     You are a travel itinerary assistant.
@@ -270,6 +280,7 @@ def itinerary(state: TravelState):
     """
 
     response = llm.invoke(prompt)
+    log_llm_response(logger, response)
 
     return {
         "itinerary": response.content
@@ -277,11 +288,15 @@ def itinerary(state: TravelState):
 
 
 def ask_user(state: TravelState):
-    logger.info("========== Ask User Node ==========")
-    logger.info("State: %s", state)
-
     missing_fields = state["missing_fields"]
     field = missing_fields[0]
+
+    log_block(
+        logger, "NODE",
+        "Node: ask_user",
+        f"Asking for: {field}",
+        f"Still missing after this: {missing_fields[1:]}",
+    )
 
     user_input = input(f"Please provide {field}: ")
 

@@ -7,6 +7,8 @@ import requests
 from dotenv import load_dotenv
 from langchain_core.tools import tool
 
+from tracing import log_block
+
 load_dotenv()
 logger = logging.getLogger(__name__)
 
@@ -84,7 +86,11 @@ def search_flights(
         }
     }
 
-    logger.info("Duffel request: POST /air/offer_requests %s", payload)
+    log_block(
+        logger, "TOOL CALL",
+        "search_flights → Duffel POST /air/offer_requests",
+        *(f"   {leg['origin']} → {leg['destination']} on {leg['departure_date']}" for leg in slices),
+    )
 
     response = requests.post(
         f"{DUFFEL_API_URL}/air/offer_requests",
@@ -94,16 +100,15 @@ def search_flights(
         timeout=60,
     )
 
-    logger.info("Duffel response: HTTP %s", response.status_code)
-
     # Hand API errors back to the LLM as the tool result so it can retry with different args
     if not response.ok:
         errors = response.json().get("errors", [])
         messages = "; ".join(error.get("message", "") for error in errors) or response.text
+        log_block(logger, "TOOL RESULT", f"search_flights → failed (HTTP {response.status_code})", f"   {messages}")
         return f"Flight search failed (HTTP {response.status_code}): {messages}"
 
     offers = response.json()["data"]["offers"]
-    logger.info("Duffel returned %d offers", len(offers))
+    log_block(logger, "TOOL RESULT", f"search_flights → {len(offers)} offers (HTTP {response.status_code})")
 
     if not offers:
         return f"No flights found from {origin} to {destination} on {outbound.isoformat()}."
