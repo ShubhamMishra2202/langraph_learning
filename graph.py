@@ -39,7 +39,7 @@ graph_builder.add_conditional_edges(
 )
 
 
-# Flight tool loop: flight -> flight_tools -> flight until the LLM stops requesting tools
+# Flight tool loop: flight -> flight_tools -> flight until the LLM stops requesting tools --> ReACT
 graph_builder.add_conditional_edges(
     "flight",
     tools_condition,

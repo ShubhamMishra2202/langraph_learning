@@ -1,7 +1,8 @@
 import logging
+from datetime import date
 
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, ToolMessage
+from langchain_core.messages import HumanMessage
 from dotenv import load_dotenv
 from state import TravelState
 from model import PlannerDecision
@@ -193,38 +194,42 @@ def flight(state: TravelState):
     logger.info("Flight Node Executed")
     logger.info("State: %s", state)
     flight_llm = llm.bind_tools([search_flights])
-    prompt = f"""
+
+    # First pass seeds the conversation; later passes continue it with the ToolMessages from flight_tools
+    new_messages = []
+    if not state["messages"]:
+        prompt = f"""
     You are a flight recommendation assistant.
 
-    Find suitable flight options based on:
+    Use the search_flights tool to find real flight offers based on:
 
     Source: {state["source"]}
     Destination: {state["destination"]}
+    Days: {state["days"]}
     Budget: {state["budget"]}
+    Today's date: {date.today().isoformat()}
 
-    Provide 2 realistic-looking flight options.
-    Include airline, route and approximate price.
+    Convert the source and destination to IATA airport or city codes before calling the tool.
+    The user has not chosen travel dates, so do not pass departure_date; the tool picks a default.
+    If the search fails, fix the arguments and try again.
+
+    From the results, recommend the 2 best options for the budget.
+    Include airline, route, dates and price with currency.
     """
+        new_messages.append(HumanMessage(content=prompt))
 
-    messages = [HumanMessage(content=prompt)]
-    response = flight_llm.invoke(messages)
-    messages.append(response)
-
-    # Performs every tool call the llm model requested
-    
-    for tool_call in response.tool_calls:
-        tool_result = search_flights.invoke(tool_call["args"])
-        messages.append(ToolMessage(content=tool_result, tool_call_id=tool_call["id"]))
-
-    # Sends back the tools responses so that the LLM model can generate the final answer 
-    if response.tool_calls:
-        response = flight_llm.invoke(messages)
+    response = flight_llm.invoke(state["messages"] + new_messages)
+    new_messages.append(response)
 
     logger.info(f"Flight Mode response  {response}")
 
-    return {
-        "flight": response.content
-    }
+    update = {"messages": new_messages}
+
+    # No tool calls means the LLM has its final answer; tools_condition routes back to planner
+    if not response.tool_calls:
+        update["flight"] = response.content
+
+    return update
 
 def hotel(state: TravelState):
     logger.info("Hotel Node Executed")
