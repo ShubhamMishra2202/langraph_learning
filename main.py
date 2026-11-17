@@ -23,5 +23,5 @@ trace_id_var.set(str(trace_id))
 
 graph.invoke(
     initial_state,
-    config={"run_id": trace_id, "run_name": "travel_planner", "tags": ["travel-planner"]},
+    config={"run_id": trace_id, "run_name": "travel_planner", "tags": ["travel-planner"],"configurable": {"thread_id": ...}},
 )

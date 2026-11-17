@@ -1,6 +1,6 @@
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
-
+from langgraph.checkpoint.memory import InMemorySaver
 from state import TravelState
 from nodes import planner, flight, hotel, itinerary,ask_user
 from tools import FLIGHT_TOOLS
@@ -57,4 +57,4 @@ graph_builder.add_edge("itinerary", "planner")
 graph_builder.add_edge("ask_user", "planner")
 
 
-graph = graph_builder.compile()
+graph = graph_builder.compile(checkpointer=InMemorySaver())

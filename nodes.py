@@ -1,4 +1,5 @@
 import logging
+from langgraph.types import interrupt
 from datetime import date
 
 from langchain_openai import ChatOpenAI
@@ -303,7 +304,7 @@ def ask_user(state: TravelState):
         f"Still missing after this: {missing_fields[1:]}",
     )
 
-    user_input = input(f"Please provide {field}: ")
+    user_input = interrupt({"ask": field})
 
     if field == "days":
         user_input = int(user_input)
