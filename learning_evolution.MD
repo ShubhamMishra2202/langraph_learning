@@ -62,3 +62,29 @@ A running log of issues hit while building this LangGraph travel-planner project
 **Fix:** Compiled with `checkpointer=InMemorySaver()` and gave every run a `thread_id`. `ask_user` now calls `interrupt({"ask": field})`. [main.py](main.py) loops while the result contains `__interrupt__` and resumes with `Command(resume=answer)` on the same config. `run_id` is passed only on the first invoke because LangSmith needs a unique run id, so later resumes show up as separate runs. Tested with a stubbed planner: five interrupts, each answer converted correctly (`days`/`budget` to int, `likes` to a list), 13 checkpoints in the thread history. **Gotcha:** on resume the interrupted node runs again from its first line, so its log block appears twice.
 
 **Milestones (10, 11 in [MILESTONES.md](MILESTONES.md)):** Persistence / Checkpointing and Human-in-the-loop.
+
+### 10. Hotel and itinerary answered from the LLM's memory, with no tools
+**Issue:** Only `flight` had a tool loop. `hotel` and `itinerary` were single `llm.invoke(prompt)` calls, so hotel names, prices and places to visit could be out of date or invented. Giving them tools via the shared `messages` channel would have mixed the conversations: the hotel LLM would see every flight tool call, and `tools_condition` could read another worker's last message.
+
+**Fix:**
+- **Separate channels.** Each ReAct worker has its own channel: `messages` (flight), `hotel_messages` and `itinerary_messages`. `ToolNode(..., messages_key=...)` and `partial(tools_condition, messages_key=...)` read and write only that channel.
+- **One shared step.** `_react_step` in [nodes.py](nodes.py) is the shared Reason step. `add_react_worker` in [graph.py](graph.py) wires `worker → worker_tools → worker → planner` for each of the three workers.
+- **New tools** in [tools.py](tools.py):
+  - `search_hotels`: Wikivoyage Sleep listings, with real price ranges, plus OpenStreetMap hotels (names only).
+  - `search_attractions`: Wikivoyage See/Do/Eat/Buy listings plus OpenStreetMap places by category.
+  - `get_weather_forecast`: Open-Meteo forecast within 15 days; beyond that, the actual weather on the same dates last year.
+  - `convert_currency` is reused by hotel.
+- **Tool sets:** `HOTEL_TOOLS = [search_hotels, convert_currency]`, `ITINERARY_TOOLS = [search_attractions, get_weather_forecast]`.
+- **Prompts** now pass the flight and hotel results along, so the itinerary uses the flight's dates and the hotel takes the flight cost out of the budget. They also tell the LLM to use only places the tools returned.
+
+**Gotchas found while building:**
+- Duffel Stays (hotel prices) returns 403 because it isn't enabled on this account.
+- The public Overpass servers (OpenStreetMap queries) kept returning 502 or timing out. Each server now gets a 25 s timeout, and every tool merges two sources, so when OSM is down Wikivoyage still answers.
+- OSM in India tags college hostels and even Indian Coffee House as `tourism=hotel`, so hostels are excluded.
+
+**Verified** with a full run, Ahmedabad → Raipur, 3 days, ₹30,000:
+- flight looked up both airports in parallel, then called `search_flights` and `convert_currency`.
+- hotel called `search_hotels` and recommended the Wikivoyage hotels with their ₹1500–2500 prices.
+- itinerary called `get_weather_forecast` and `search_attractions` in parallel, used the flight's 2026-12-18 start date and planned around the weather.
+
+**Milestone (9 in [MILESTONES.md](MILESTONES.md)):** extended. Every worker now picks between its own tools.

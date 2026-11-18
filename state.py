@@ -15,5 +15,8 @@ class TravelState(TypedDict):
     itinerary: str
     next_node:str
     missing_fields:list[str]
-    # Conversation used by the flight node's tool-calling loop (flight <-> flight_tools)
-    messages: Annotated[list[AnyMessage], add_messages]
+    # One conversation per ReAct worker, so each tool loop only sees its own messages
+    # and tools_condition reads the right last message
+    messages: Annotated[list[AnyMessage], add_messages]            # flight <-> flight_tools
+    hotel_messages: Annotated[list[AnyMessage], add_messages]      # hotel <-> hotel_tools
+    itinerary_messages: Annotated[list[AnyMessage], add_messages]  # itinerary <-> itinerary_tools

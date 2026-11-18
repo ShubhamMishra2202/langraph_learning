@@ -59,6 +59,8 @@ That is Reason (`flight` calls the LLM) → Act (`flight_tools`) → Observe (th
 ### 9. Multiple tools + tool selection
 Added `lookup_airport_code` (Duffel place suggestions) and `convert_currency` (Frankfurter ECB rates) alongside `search_flights`, bundled as `FLIGHT_TOOLS` in [tools.py](tools.py). The `flight` node binds all three with `llm.bind_tools(FLIGHT_TOOLS)` and one `ToolNode(FLIGHT_TOOLS)` runs whichever tool the model requests. The prompt describes the tools and the goal but doesn't script the steps, so the LLM picks the order itself. In a real run it looked up both airport codes in parallel, searched flights, then converted prices to INR twice before answering.
 
+**Extended (2026-11-18):** `hotel` and `itinerary` became ReAct workers too. `hotel` has `search_hotels` and `convert_currency`; `itinerary` has `search_attractions` and `get_weather_forecast`. Each worker has its own messages channel (`messages`, `hotel_messages`, `itinerary_messages`) through `ToolNode(messages_key=...)` and `tools_condition(messages_key=...)`, and all three are wired with one `add_react_worker` helper in [graph.py](graph.py). See learning_evolution #10.
+
 ### 10. Persistence / Checkpointing
 [graph.py](graph.py) compiles with `checkpointer=InMemorySaver()`, so LangGraph saves a snapshot of the full state after every step. [main.py](main.py) passes `configurable.thread_id` (the trace id), which is the key every later invoke uses to continue the same saved state. `graph.get_state(config)` and `graph.get_state_history(config)` now show the current snapshot and every past step. `InMemorySaver` only lasts for the life of the process; `SqliteSaver` or `PostgresSaver` would make it survive restarts.
 

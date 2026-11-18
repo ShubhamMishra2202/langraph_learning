@@ -14,7 +14,9 @@ initial_state = {
     "hotel": "",
     "itinerary": "",
     "next_node":None,
-    "messages": []
+    "messages": [],
+    "hotel_messages": [],
+    "itinerary_messages": []
 }
 # Same id in app.log and as the LangSmith run id, so the two can be matched up
 trace_id = uuid.uuid4()
@@ -35,3 +37,6 @@ while "__interrupt__" in result:
     question = result["__interrupt__"][0].value
     answer = input(f"Please provide {question['ask']}: ")
     result = graph.invoke(Command(resume=answer), config=config)
+
+for section in ("flight", "hotel", "itinerary"):
+    print(f"\n========== {section.upper()} ==========\n{result[section]}")

@@ -7,7 +7,7 @@ from langchain_core.messages import HumanMessage
 from dotenv import load_dotenv
 from state import TravelState
 from model import PlannerDecision
-from tools import FLIGHT_TOOLS
+from tools import FLIGHT_TOOLS, HOTEL_TOOLS, ITINERARY_TOOLS
 from tracing import setup_logging, log_block, log_llm_response
 
 load_dotenv()
@@ -15,6 +15,28 @@ llm = ChatOpenAI(model="gpt-4o-mini")
 
 setup_logging()
 logger = logging.getLogger(__name__)
+
+
+def _react_step(state: TravelState, messages_key: str, tools: list, prompt: str, result_key: str) -> dict:
+    """One Reason step of a worker's ReAct loop (worker -> worker_tools -> worker).
+
+    Each worker keeps its own conversation in state[messages_key], so it never sees another
+    worker's tool calls and tools_condition(messages_key=...) reads the right last message.
+    """
+    # First pass seeds the conversation; later passes continue it with the ToolMessages from the ToolNode
+    new_messages = [] if state[messages_key] else [HumanMessage(content=prompt)]
+
+    response = llm.bind_tools(tools).invoke(state[messages_key] + new_messages)
+    new_messages.append(response)
+    log_llm_response(logger, response)
+
+    update = {messages_key: new_messages}
+
+    # No tool calls means the LLM has its final answer; tools_condition routes back to planner
+    if not response.tool_calls:
+        update[result_key] = response.content
+
+    return update
 
 def planner(state: TravelState):
     log_block(
@@ -197,12 +219,7 @@ def flight(state: TravelState):
         f"Trip: {state['source']} → {state['destination']}, {state['days']} days, budget {state['budget']}",
         f"Messages so far: {len(state['messages'])}",
     )
-    flight_llm = llm.bind_tools(FLIGHT_TOOLS)
-
-    # First pass seeds the conversation; later passes continue it with the ToolMessages from flight_tools
-    new_messages = []
-    if not state["messages"]:
-        prompt = f"""
+    prompt = f"""
     You are a flight recommendation assistant with these tools:
     - lookup_airport_code: find IATA codes for a city name
     - search_flights: search real flight offers (needs IATA codes)
@@ -225,20 +242,7 @@ def flight(state: TravelState):
     Recommend the 2 best options for the budget.
     Include airline, route, dates and price in both the offer currency and INR.
     """
-        new_messages.append(HumanMessage(content=prompt))
-
-    response = flight_llm.invoke(state["messages"] + new_messages)
-    new_messages.append(response)
-
-    log_llm_response(logger, response)
-
-    update = {"messages": new_messages}
-
-    # No tool calls means the LLM has its final answer; tools_condition routes back to planner
-    if not response.tool_calls:
-        update["flight"] = response.content
-
-    return update
+    return _react_step(state, "messages", FLIGHT_TOOLS, prompt, "flight")
 
 def hotel(state: TravelState):
     log_block(
@@ -248,25 +252,31 @@ def hotel(state: TravelState):
     )
 
     prompt = f"""
-    You are a hotel recommendation assistant.
+    You are a hotel recommendation assistant with these tools:
+    - search_hotels: real hotels and guest houses in a city from OpenStreetMap (no prices)
+    - convert_currency: convert prices into another currency
 
-    Recommend suitable hotels based on:
+    Recommend hotels for this trip:
 
     Destination: {state["destination"]}
-    Days: {state["days"]}
-    Budget: {state["budget"]}
+    Nights: {state["days"]}
+    Total trip budget: {state["budget"]} INR
     Likes: {state["likes"]}
 
-    Provide 2 suitable hotel options.
-    Include hotel name, approximate price and a short description.
+    Flight plan already chosen (its cost comes out of the same budget):
+    {state.get("flight") or "not available"}
+
+    Decide for yourself which tools you need.
+    Only recommend hotels that search_hotels actually returned; never invent hotel names.
+    The tool has no prices, so give an estimated nightly range in INR and label it as an estimate.
+    The budget and Indian hotel prices are already in INR; only call convert_currency for prices
+    in another currency, rather than guessing the rate.
+    If a tool fails, fix the arguments and try again.
+
+    Recommend 2 hotels that fit what is left of the budget after the flight.
+    Include name, type, star rating if known, estimated price per night and total, and why it suits the traveller.
     """
-
-    response = llm.invoke(prompt)
-    log_llm_response(logger, response)
-
-    return {
-        "hotel": response.content
-    }
+    return _react_step(state, "hotel_messages", HOTEL_TOOLS, prompt, "hotel")
 def itinerary(state: TravelState):
     log_block(
         logger, "NODE",
@@ -275,22 +285,32 @@ def itinerary(state: TravelState):
     )
 
     prompt = f"""
-    You are a travel itinerary assistant.
+    You are a travel itinerary assistant with these tools:
+    - search_attractions: real places in a city from OpenStreetMap, by category
+      (museum, religious, historic, park, lake, viewpoint, zoo_or_theme_park, attraction, market, restaurant)
+    - get_weather_forecast: daily weather for the trip dates
 
     Create a {state["days"]}-day itinerary.
 
     Destination: {state["destination"]}
     Interests: {state["likes"]}
+    Today's date: {date.today().isoformat()}
 
-    Create a simple day-by-day itinerary.
+    Flight plan (use its dates for the trip; if it has none, assume the trip starts 30 days from today):
+    {state.get("flight") or "not available"}
+
+    Hotel plan:
+    {state.get("hotel") or "not available"}
+
+    Decide for yourself which tools you need.
+    Pick attraction categories that match the traveller's interests.
+    Only include places that search_attractions actually returned; never invent place names.
+    Use the weather to plan: indoor places on rainy or very hot days, outdoor ones on good days.
+    If a tool fails, fix the arguments and try again.
+
+    Give a simple day-by-day plan with the date, the weather and morning / afternoon / evening activities.
     """
-
-    response = llm.invoke(prompt)
-    log_llm_response(logger, response)
-
-    return {
-        "itinerary": response.content
-    }
+    return _react_step(state, "itinerary_messages", ITINERARY_TOOLS, prompt, "itinerary")
 
 
 def ask_user(state: TravelState):
