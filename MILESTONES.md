@@ -12,9 +12,9 @@ The LangGraph concepts this travel-planner project is working through, in order.
 | 6 | State-based guardrails | ✅ Done | 2026-08-17 | `1f04610`, `19654c2` |
 | 7 | Tool calling | ✅ Done | 2026-08-21 | `eae6c43` |
 | 8 | ReAct / Agent loop | ✅ Done | 2026-10-31 | `6cbcea2` |
-| 9 | Multiple tools + tool selection | 🔴 | | |
-| 10 | Persistence / Checkpointing | 🔴 | | |
-| 11 | Human-in-the-loop | 🔴 | | |
+| 9 | Multiple tools + tool selection | ✅ Done | 2026-11-01 | `77524b6` |
+| 10 | Persistence / Checkpointing | ✅ Done | 2026-11-18 | `ea8c842` (+ next commit) |
+| 11 | Human-in-the-loop | ✅ Done | 2026-11-18 | `ea8c842` (+ next commit) |
 | 12 | Retry / Error recovery | 🔴 | | |
 | 13 | Multi-agent / Supervisor | 🔴 | | |
 | 14 | Planning agents | 🔴 | | |
@@ -55,3 +55,12 @@ Moved the tool loop out of the `flight` node and into the graph (learning_evolut
 - Routed with `tools_condition`: `flight → flight_tools → flight` for as long as the LLM asks for tools, then `flight → planner`.
 
 That is Reason (`flight` calls the LLM) → Act (`flight_tools`) → Observe (the `ToolMessage` in `messages`) → repeat. It handles any number of tool rounds, every round is a visible graph step, and `recursion_limit` caps runaway loops. Tested with a stub LLM that made two tool rounds before answering.
+
+### 9. Multiple tools + tool selection
+Added `lookup_airport_code` (Duffel place suggestions) and `convert_currency` (Frankfurter ECB rates) alongside `search_flights`, bundled as `FLIGHT_TOOLS` in [tools.py](tools.py). The `flight` node binds all three with `llm.bind_tools(FLIGHT_TOOLS)` and one `ToolNode(FLIGHT_TOOLS)` runs whichever tool the model requests. The prompt describes the tools and the goal but doesn't script the steps, so the LLM picks the order itself. In a real run it looked up both airport codes in parallel, searched flights, then converted prices to INR twice before answering.
+
+### 10. Persistence / Checkpointing
+[graph.py](graph.py) compiles with `checkpointer=InMemorySaver()`, so LangGraph saves a snapshot of the full state after every step. [main.py](main.py) passes `configurable.thread_id` (the trace id), which is the key every later invoke uses to continue the same saved state. `graph.get_state(config)` and `graph.get_state_history(config)` now show the current snapshot and every past step. `InMemorySaver` only lasts for the life of the process; `SqliteSaver` or `PostgresSaver` would make it survive restarts.
+
+### 11. Human-in-the-loop
+`ask_user` in [nodes.py](nodes.py) calls `interrupt({"ask": field})` instead of the blocking `input()`. The graph pauses, saves a checkpoint and returns `__interrupt__` to the caller. [main.py](main.py) loops: it reads the question from `result["__interrupt__"][0].value`, gets the answer from the user and resumes with `graph.invoke(Command(resume=answer), config)`. Because the pause/resume goes through the checkpointer, the same graph can now sit behind an API or UI rather than a terminal. When it resumes, the interrupted node runs again from its first line and `interrupt()` returns the answer this time, so `ask_user` logs twice per field. Anything before `interrupt()` in a node must be safe to run twice.

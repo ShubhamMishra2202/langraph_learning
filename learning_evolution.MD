@@ -53,3 +53,12 @@ A running log of issues hit while building this LangGraph travel-planner project
 **Issue:** #7 rewired the graph (`flight_tools` + `tools_condition`) but the `flight` node itself still ran the old in-node tool loop and never returned anything into `messages`. `tools_condition` reads the last message in `messages`, so with an empty list it raised `ValueError: No messages found in input state to tool_edge`. Separately, `search_flights` returned the same hard-coded Ahmedabad → Tokyo text whatever the arguments were.
 
 **Fix:** `search_flights` in `tools.py` now calls the real Duffel API (`POST /air/offer_requests?return_offers=true`, token from `DUFFEL_ACCESS_TOKEN` in `.env`). It takes IATA codes, a departure date (default: 30 days out) and `days` (which adds a return slice), and returns the cheapest offers. Each request and HTTP status is logged. Duffel errors such as a bad IATA code come back as the tool result rather than an exception, so the LLM can observe them and retry. `flight` is now a single ReAct step: on its first pass it seeds the conversation with a `HumanMessage`, it invokes the tool-bound LLM on `state["messages"]`, appends the reply, and writes `state["flight"]` only when no more tools are requested.
+
+## 2026-11-18
+
+### 9. `ask_user` blocked on `input()` and nothing survived between invokes
+**Issue:** The graph compiled without a checkpointer, so each `invoke` started from scratch. Missing fields were collected with a blocking `input()` inside the `ask_user` node, which only works in a terminal script and can't pause and resume across requests.
+
+**Fix:** Compiled with `checkpointer=InMemorySaver()` and gave every run a `thread_id`. `ask_user` now calls `interrupt({"ask": field})`. [main.py](main.py) loops while the result contains `__interrupt__` and resumes with `Command(resume=answer)` on the same config. `run_id` is passed only on the first invoke because LangSmith needs a unique run id, so later resumes show up as separate runs. Tested with a stubbed planner: five interrupts, each answer converted correctly (`days`/`budget` to int, `likes` to a list), 13 checkpoints in the thread history. **Gotcha:** on resume the interrupted node runs again from its first line, so its log block appears twice.
+
+**Milestones (10, 11 in [MILESTONES.md](MILESTONES.md)):** Persistence / Checkpointing and Human-in-the-loop.
