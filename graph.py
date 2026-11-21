@@ -3,12 +3,12 @@ from functools import partial
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.checkpoint.memory import InMemorySaver
-from state import TravelState
+from state import TravelState, TravelInput
 from nodes import planner, flight, hotel, itinerary,ask_user
 from tools import FLIGHT_TOOLS, HOTEL_TOOLS, ITINERARY_TOOLS
 
 
-graph_builder = StateGraph(TravelState)
+graph_builder = StateGraph(TravelState, input_schema=TravelInput)
 
 
 graph_builder.add_node("planner", planner)
@@ -59,4 +59,9 @@ graph_builder.add_conditional_edges(
 graph_builder.add_edge("ask_user", "planner")
 
 
+# main.py runs the graph in-process, so it brings its own checkpointer.
 graph = graph_builder.compile(checkpointer=InMemorySaver())
+
+# LangGraph Studio (`langgraph dev`, see langgraph.json) loads this one. The dev server
+# adds its own persistence for threads, interrupts and time travel, so no checkpointer here.
+studio_graph = graph_builder.compile()

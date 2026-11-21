@@ -3,20 +3,9 @@ from langgraph.types import Command
 from graph import graph
 from tracing import trace_id_var
 
+# The graph's input schema is TravelInput (just user_query); the planner asks for every other field
 initial_state = {
     "user_query":"I want to visit Raipur.Currently I live in Ahmedabad. 3 days of stay and my budget is 30 thousand",
-    "source":None,
-    "destination": None,
-    "days": None,
-    "budget": None,
-    "likes":[],
-    "flight": "",
-    "hotel": "",
-    "itinerary": "",
-    "next_node":None,
-    "messages": [],
-    "hotel_messages": [],
-    "itinerary_messages": []
 }
 # Same id in app.log and as the LangSmith run id, so the two can be matched up
 trace_id = uuid.uuid4()

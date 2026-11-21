@@ -88,3 +88,20 @@ A running log of issues hit while building this LangGraph travel-planner project
 - itinerary called `get_weather_forecast` and `search_attractions` in parallel, used the flight's 2026-12-18 start date and planned around the weather.
 
 **Milestone (9 in [MILESTONES.md](MILESTONES.md)):** extended. Every worker now picks between its own tools.
+
+## 2026-11-21
+
+### 11. Getting the graph to run in LangGraph Studio
+**Goal:** watch runs live in LangGraph Studio instead of only reading LangSmith traces afterwards. Added [langgraph.json](langgraph.json) and [studio.sh](studio.sh) (`langgraph dev`). Four things broke on the way:
+
+- **The dev server needs Python ≥ 3.11.** `langgraph-cli[inmem]` quietly skips its server packages (`langgraph-api`, `langgraph-runtime-inmem`) on the 3.10 `venv/`. **Fix:** `studio.sh` runs the CLI through `uvx --python 3.11 --with-requirements requirements.txt`, which builds a separate cached env. `venv/` is unchanged and still runs `main.py`.
+- **Custom checkpointer.** The dev server supplies its own persistence (threads, interrupts, time travel), so a graph compiled with `InMemorySaver` doesn't belong there. **Fix:** [graph.py](graph.py) compiles the same builder twice: `graph` with `InMemorySaver` for `main.py`, and `studio_graph` with no checkpointer for Studio.
+- **`KeyError: 'source'` on the first planner step.** `main.py` used to pass every key (set to `None` or `[]`), but a Studio run only sends what's in the input form. LangGraph leaves a key out of state until a node writes it, so `state["source"]` and `state["messages"]` blew up. **Fix:** `.get()` for those reads in [nodes.py](nodes.py) (`planner`'s missing-field check, `_react_step`'s first pass, the flight log line). Added `TravelInput` (just `user_query`) as the graph's `input_schema`, so the form shows one field and `main.py` now passes only the query.
+- **Studio showed no input/state form.** The server log said `Please use typing_extensions.TypedDict instead of typing.TypedDict on Python < 3.12`. Pydantic builds the JSON schema Studio uses to draw the forms, and it can't do that from `typing.TypedDict` before 3.12. **Fix:** [state.py](state.py) imports `TypedDict` from `typing_extensions`.
+
+**Verified:**
+- Through the dev server's API (the same calls Studio makes): one thread, five `ask_user` interrupts resumed with `Command(resume=...)`, then flight, hotel and itinerary all filled in, with 35 checkpoints in the thread history.
+- The schemas endpoint returns `input: [user_query]` and all 14 state fields.
+- `main.py` still runs end to end with the answers piped in.
+
+**Milestone (17 in [MILESTONES.md](MILESTONES.md)):** observability half done; evaluation still to do.

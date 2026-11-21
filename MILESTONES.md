@@ -20,7 +20,7 @@ The LangGraph concepts this travel-planner project is working through, in order.
 | 14 | Planning agents | 🔴 | | |
 | 15 | Reflection / Critic agents | 🔴 | | |
 | 16 | Dynamic workflows | 🔴 | | |
-| 17 | Evaluation + observability | 🔴 | | |
+| 17 | Evaluation + observability | 🟡 Observability done, evaluation to do | 2026-11-21 (partial) | `dcd0e63`, uncommitted (Studio) |
 | 18 | Production agent architecture | 🔴 | | |
 
 ## How each milestone was achieved
@@ -66,3 +66,12 @@ Added `lookup_airport_code` (Duffel place suggestions) and `convert_currency` (F
 
 ### 11. Human-in-the-loop
 `ask_user` in [nodes.py](nodes.py) calls `interrupt({"ask": field})` instead of the blocking `input()`. The graph pauses, saves a checkpoint and returns `__interrupt__` to the caller. [main.py](main.py) loops: it reads the question from `result["__interrupt__"][0].value`, gets the answer from the user and resumes with `graph.invoke(Command(resume=answer), config)`. Because the pause/resume goes through the checkpointer, the same graph can now sit behind an API or UI rather than a terminal. When it resumes, the interrupted node runs again from its first line and `interrupt()` returns the answer this time, so `ask_user` logs twice per field. Anything before `interrupt()` in a node must be safe to run twice.
+
+### 17. Evaluation + observability (in progress)
+**Observability, done:**
+- **LangSmith tracing** (`dcd0e63`): every run is a trace on smith.langchain.com, and the trace id in [app.log](app.log) is also the LangSmith run id.
+- **LangGraph Studio** (2026-11-21): [langgraph.json](langgraph.json) points the local dev server at `studio_graph` in [graph.py](graph.py). Start it with [studio.sh](studio.sh), which opens Studio at `https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:2024`. Studio draws the graph, lights up each node as it runs, shows the state after every step, pauses at `ask_user`'s `interrupt()` so you can type the resume value in the UI, and can rewind to any checkpoint and fork from there.
+  - The dev server brings its own persistence, so `studio_graph` is compiled without a checkpointer. `graph` keeps `InMemorySaver` for [main.py](main.py).
+  - The graph's input schema is now `TravelInput` (just `user_query`) in [state.py](state.py), so Studio's input form is a single box and the planner asks for everything else.
+
+**Evaluation, still to do:** LangSmith datasets and evaluators that score the planner's routing and the workers' answers.

@@ -1,7 +1,16 @@
-from typing import Annotated, TypedDict
+from typing import Annotated
+
+# typing_extensions, not typing: on Python < 3.12 pydantic can't build a JSON schema from typing.TypedDict,
+# and Studio needs that schema to draw the input/state forms
+from typing_extensions import TypedDict
 
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
+
+class TravelInput(TypedDict):
+    """What a caller passes in (and the only field Studio's input form shows). The planner asks for the rest."""
+    user_query: str
+
 
 class TravelState(TypedDict):
     user_query:str

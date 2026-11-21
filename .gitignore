@@ -2,3 +2,5 @@ __pycache__/
 venv/
 .env
 app.log
+# langgraph dev: local thread/checkpoint store for Studio
+.langgraph_api/

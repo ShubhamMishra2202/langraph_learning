@@ -23,10 +23,12 @@ def _react_step(state: TravelState, messages_key: str, tools: list, prompt: str,
     Each worker keeps its own conversation in state[messages_key], so it never sees another
     worker's tool calls and tools_condition(messages_key=...) reads the right last message.
     """
-    # First pass seeds the conversation; later passes continue it with the ToolMessages from the ToolNode
-    new_messages = [] if state[messages_key] else [HumanMessage(content=prompt)]
+    # First pass seeds the conversation; later passes continue it with the ToolMessages from the ToolNode.
+    # A channel nothing has written to yet is absent from state (e.g. a run started from Studio), hence .get().
+    history = state.get(messages_key) or []
+    new_messages = [] if history else [HumanMessage(content=prompt)]
 
-    response = llm.bind_tools(tools).invoke(state[messages_key] + new_messages)
+    response = llm.bind_tools(tools).invoke(history + new_messages)
     new_messages.append(response)
     log_llm_response(logger, response)
 
@@ -54,9 +56,10 @@ def planner(state: TravelState):
         "likes"
     ]
 
+    # .get(): the graph's input is only user_query, so these keys don't exist until ask_user fills them
     missing_fields = [
         field for field in required_fields
-        if not state[field]
+        if not state.get(field)
     ]
 
     # ---------------------------------------------------------
@@ -217,7 +220,7 @@ def flight(state: TravelState):
         logger, "NODE",
         "Node: flight",
         f"Trip: {state['source']} → {state['destination']}, {state['days']} days, budget {state['budget']}",
-        f"Messages so far: {len(state['messages'])}",
+        f"Messages so far: {len(state.get('messages') or [])}",
     )
     prompt = f"""
     You are a flight recommendation assistant with these tools:
