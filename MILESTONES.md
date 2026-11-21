@@ -20,7 +20,7 @@ The LangGraph concepts this travel-planner project is working through, in order.
 | 14 | Planning agents | 🔴 | | |
 | 15 | Reflection / Critic agents | 🔴 | | |
 | 16 | Dynamic workflows | 🔴 | | |
-| 17 | Evaluation + observability | 🟡 Observability done, evaluation to do | 2026-11-21 (partial) | `dcd0e63`, uncommitted (Studio) |
+| 17 | Evaluation + observability | 🟡 Observability done, evaluation to do | 2026-11-21 (partial) | `dcd0e63`, `d92c922` |
 | 18 | Production agent architecture | 🔴 | | |
 
 ## How each milestone was achieved
